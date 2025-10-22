@@ -1,0 +1,183 @@
+.:
+create/
+delete/
+docker-compose
+final.txt
+initdb/
+read/
+update/
+
+./create:
+Dockerfile
+main.py
+
+./delete:
+Dockerfile
+main.py
+
+./initdb:
+Dockerfile
+init.sql
+
+./read:
+Dockerfile
+main.py
+
+./update:
+Dockerfile
+main.py
+create folder 
+FROM python:3.11-slim
+WORKDIR /app
+COPY main.py .
+RUN pip install fastapi uvicorn mysql-connector-python
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+
+from fastapi import FastAPI
+import mysql.connector
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class User(BaseModel):
+    name: str
+    email: str
+
+@app.post("/")
+def create_user(user: User):
+    conn = mysql.connector.connect(host="db", user="root", password="rootpass", database="crud_db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO users (name, email) VALUES (%s, %s)", (user.name, user.email))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return {"message": "User created"}
+
+delete folder 
+FROM python:3.11-slim
+WORKDIR /app
+COPY main.py .
+RUN pip install fastapi uvicorn mysql-connector-python
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8004"]
+
+from fastapi import FastAPI
+import mysql.connector
+
+app = FastAPI()
+
+@app.delete("/{user_id}")
+def delete_user(user_id: int):
+    conn = mysql.connector.connect(host="db", user="root", password="rootpass", database="crud_db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return {"message": "User deleted"}
+
+initdb folder 
+FROM mysql:8.0
+ENV MYSQL_ROOT_PASSWORD=rootpass
+ENV MYSQL_DATABASE=crud_db
+COPY init.sql /docker-entrypoint-initdb.d/
+
+CREATE DATABASE IF NOT EXISTS crud_db;
+USE crud_db;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255),
+  email VARCHAR(255)
+);
+
+read folder 
+FROM python:3.11-slim
+WORKDIR /app
+COPY main.py .
+RUN pip install fastapi uvicorn mysql-connector-python
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+
+from fastapi import FastAPI
+import mysql.connector
+
+app = FastAPI()
+
+@app.get("/{user_id}")
+def read_user(user_id: int):
+    conn = mysql.connector.connect(host="db", user="root", password="rootpass", database="crud_db")
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result or {"message": "User not found"}
+
+update folder 
+FROM python:3.11-slim
+WORKDIR /app
+COPY main.py .
+RUN pip install fastapi uvicorn mysql-connector-python
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]
+
+from fastapi import FastAPI
+import mysql.connector
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class User(BaseModel):
+    name: str
+    email: str
+
+@app.put("/{user_id}")
+def update_user(user_id: int, user: User):
+    conn = mysql.connector.connect(host="db", user="root", password="rootpass", database="crud_db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET name = %s, email = %s WHERE id = %s", (user.name, user.email, user_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return {"message": "User updated"}
+
+docker-compose 
+version: '3.8'
+
+services:
+  db:
+    build: ./initdb
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+  create:
+    build: ./create
+    ports:
+      - "8001:8001"
+    depends_on:
+      - db
+
+  read:
+    build: ./read
+    ports:
+      - "8002:8002"
+    depends_on:
+      - db
+
+  update:
+    build: ./update
+    ports:
+      - "8003:8003"
+    depends_on:
+      - db
+
+  delete:
+    build: ./delete
+    ports:
+      - "8004:8004"
+    depends_on:
+      - db
+
+volumes:
+  db_data:
+
